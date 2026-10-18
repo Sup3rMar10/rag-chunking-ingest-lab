@@ -1,0 +1,98 @@
+corpus: 200 synthetic docs (36 flat), 642 words each, 615 questions {'bigtable': 34, 'code': 87, 'fact': 130, 'para': 95, 'prose': 65, 'steps': 86, 'table': 118}
+
+=== 1. Retrieval quality by chunking strategy ===
+Questions: 319 dev / 296 held-out (split by document)
+
+Chunk size sweep on dev: size: cover@3 / context words@3 (* = chosen, context budget 400 words):
+  fixed        64:79.3%/190w  128:86.5%/365w*  256:92.2%/623w  512:100.0%/1217w
+  sentence     64:90.3%/162w  128:91.8%/344w*  256:93.7%/612w  512:100.0%/1207w
+  recursive    64:93.1%/120w  128:93.7%/311w*  256:99.7%/587w  512:100.0%/1178w
+  structure    64:97.2%/105w*  128:97.2%/194w  256:88.7%/243w  512:92.2%/292w
+  parent_child 32:98.7%/455w  48:98.7%/424w  64:99.7%/341w  96:99.7%/317w*
+
+HELD-OUT, size chosen on dev within the context budget:
+strategy       size  chunks  words  cover@1  cover@3   95% CI  cover@5  answer-only@3  ctx words@3
+fixed           128    1203    120    66.9%    87.8%    84-91    93.9%          91.2%          369
+sentence        128    1245    112    76.7%    93.9%    91-96    97.6%          95.3%          345
+recursive       128    1313    102    82.1%    92.2%    89-95    96.6%          95.6%          310
+structure        64    3011     43    92.6%    96.6%    94-98    99.0%          96.6%          102
+parent_child     96    2156     65    95.9%   100.0%   99-100   100.0%         100.0%          290
+
+HELD-OUT, size chosen on dev with NO budget (big chunks buy coverage with context):
+strategy       size  chunks  words  cover@1  cover@3   95% CI  cover@5  answer-only@3  ctx words@3
+fixed           512     378    370    89.5%   100.0%   99-100   100.0%         100.0%         1214
+sentence        512     377    368    87.8%   100.0%   99-100   100.0%         100.0%         1211
+recursive       512     378    362    87.5%   100.0%   99-100   100.0%         100.0%         1183
+structure        64    3011     43    92.6%    96.6%    94-98    99.0%          96.6%          102
+parent_child     96    2156     65    95.9%   100.0%   99-100   100.0%         100.0%          290
+
+HELD-OUT, every strategy at the same size (128 words; parent_child child = 48):
+strategy       size  chunks  words  cover@1  cover@3   95% CI  cover@5  answer-only@3  ctx words@3
+fixed           128    1203    120    66.9%    87.8%    84-91    93.9%          91.2%          369
+sentence        128    1245    112    76.7%    93.9%    91-96    97.6%          95.3%          345
+recursive       128    1313    102    82.1%    92.2%    89-95    96.6%          95.6%          310
+structure       128    1923     67    89.2%    94.6%    91-97    99.7%          94.6%          189
+parent_child     48    3879     40    98.3%    99.3%   98-100   100.0%          99.3%          383
+
+Reference (not a real option): one chunk per whole document:
+strategy       size  chunks  words  cover@1  cover@3   95% CI  cover@5  answer-only@3  ctx words@3
+whole-doc       all     200    642   100.0%   100.0%   99-100   100.0%         100.0%         1777
+
+Held-out cover@3 by question kind (size chosen on dev):
+strategy        bigtable      code      fact      para     prose     steps     table
+(n)                   17        42        69        51        27        38        52
+fixed              41.2%    100.0%     84.1%     90.2%    100.0%     86.8%     90.4%
+sentence           76.5%    100.0%     89.9%     96.1%    100.0%     92.1%     96.2%
+recursive          41.2%    100.0%     88.4%     90.2%    100.0%    100.0%    100.0%
+structure          88.2%     95.2%     95.7%    100.0%     92.6%    100.0%     98.1%
+parent_child      100.0%    100.0%    100.0%    100.0%    100.0%    100.0%    100.0%
+
+Held-out cover@3 by document format (md = markdown, flat = structure stripped):
+strategy         flat (n=47)    md (n=249)
+fixed                  76.6%         90.0%
+sentence               80.9%         96.4%
+recursive              80.9%         94.4%
+structure              80.9%         99.6%
+parent_child          100.0%        100.0%
+
+Enrichment ablation, held-out cover@3 (prefix indexed with the chunk text):
+strategy           none    title     path
+fixed             33.1%    87.8%    88.5%
+sentence          35.8%    93.9%    93.9%
+recursive         38.2%    92.2%    92.2%
+structure         32.1%    96.6%    97.6%
+parent_child      41.2%   100.0%   100.0%
+
+Paired comparison on held-out cover@3 (exact McNemar; only-A / only-B = questions one answered and the other did not):
+  structure     vs recursive     only-A  21  only-B   8  p = 0.024
+  structure     vs fixed         only-A  31  only-B   5  p = 0.000
+  recursive     vs fixed         only-A  18  only-B   5  p = 0.011
+  parent_child  vs structure     only-A  10  only-B   0  p = 0.002
+  parent_child  vs recursive     only-A  23  only-B   0  p = 0.000
+
+=== 2. Cost of keeping the index fresh ===
+Edit 5% of the documents (10 trials, each edits a different random set, cycling value / insert / delete).
+strategy       chunks/doc  full rebuild  doc-level  chunk-hash  saved vs full  value  insert  delete  == rebuild
+fixed                 6.1          1204       60.8        33.0          97.3%    1.1     6.8     2.7        True
+sentence              6.3          1246       62.7        26.0          97.9%    1.2     4.5     2.6        True
+recursive             6.6          1313       65.8        19.1          98.5%    1.1     3.1     1.8        True
+structure             9.4          1923       94.5        12.6          99.3%    1.0     2.4     0.5        True
+parent_child         19.4          3879      193.8        25.9          99.3%    1.0     6.1     1.1        True
+(full rebuild / doc-level / chunk-hash = chunks embedded per run; value / insert / delete = chunks embedded per edited document of that kind)
+
+Edited-fact questions (the new value must be retrievable), cover@3:
+  fixed         before re-ingest   0/40   after  30/40
+  sentence      before re-ingest   0/40   after  35/40
+  recursive     before re-ingest   0/40   after  37/40
+  structure     before re-ingest   0/40   after  39/40
+  parent_child  before re-ingest   0/40   after  40/40
+
+=== 3. Ingestion lifecycle (structure chunker, 128 words) ===
+first ingest: 200 docs, 1923 chunks, 1923 embeddings
+re-run unchanged: changed=False, embeddings=0, state identical=True
+before re-ingest of the edited docs, stale report: 10 changed docs, 14 stale chunks
+after editing 10 docs: +13 chunks, 75 kept, -14 tombstoned, 13 embeddings; stale chunks left: 0
+delete 10 docs: 102 chunks tombstoned, live 1922 -> 1820, results leaked from deleted docs: 0
+compact right away (inside grace): removed (0, 0) (chunks, embeddings); after grace: (116, 116)
+re-add the deleted docs inside the grace period: 102 chunks revived with 0 embeddings
+embedding outage on call 3: 1 doc failed, 9 others updated, failed doc kept its old chunks=True; retry updated 1 (failed again: 0)
